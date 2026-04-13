@@ -4,6 +4,7 @@ using System.Configuration;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using CoveoVerifierTool.Models;
@@ -12,9 +13,13 @@ namespace CoveoVerifierTool.Services
 {
   public class VerifyResult
   {
+    public string SriggLeId { get; set; }
     public string Label { get; set; }
+    public string Title { get; set; }
     public bool Exists { get; set; }
     public int Count { get; set; }
+    public string ItemId { get; set; }
+    public string ItemPath { get; set; }
   }
 
   public class CoveoService
@@ -85,13 +90,9 @@ namespace CoveoVerifierTool.Services
       };
     }
 
-    public async Task<VerifyResult> VerifyAsync(CoveoRequest request, string label)
+    public async Task<VerifyResult> VerifyAsync(CoveoRequest request, string label, string sriggLeId)
     {
       Console.WriteLine();
-      Console.WriteLine(new string('-', 60));
-      Console.WriteLine("Label : " + label);
-      Console.WriteLine("AQ    : " + request.aq);
-      Console.WriteLine(new string('-', 60));
 
       string json = request.ToJson();
       var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -106,7 +107,7 @@ namespace CoveoVerifierTool.Services
         Console.ForegroundColor = ConsoleColor.Red;
         Console.WriteLine("[ERROR] Request failed: " + ex.Message);
         Console.ResetColor();
-        return new VerifyResult { Label = label, Exists = false, Count = 0 };
+        return new VerifyResult { SriggLeId = sriggLeId, Label = label, Exists = false, Count = 0, ItemId = string.Empty, ItemPath = string.Empty };
       }
 
       string responseBody = await response.Content.ReadAsStringAsync();
@@ -117,7 +118,7 @@ namespace CoveoVerifierTool.Services
         Console.WriteLine(string.Format("[ERROR] HTTP {0} - {1}", (int)response.StatusCode, response.ReasonPhrase));
         Console.WriteLine("Response: " + responseBody);
         Console.ResetColor();
-        return new VerifyResult { Label = label, Exists = false, Count = 0 };
+        return new VerifyResult { SriggLeId = sriggLeId, Label = label, Exists = false, Count = 0, ItemId = string.Empty, ItemPath = string.Empty };
       }
 
       var serializer = new JavaScriptSerializer();
@@ -127,34 +128,39 @@ namespace CoveoVerifierTool.Services
       if (coveoResponse.totalCount > 0)
       {
         Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine(string.Format("[{0}] Data EXISTS — {1} record(s) found.", label, coveoResponse.totalCount));
         Console.ResetColor();
+
+        string itemId = string.Empty;
+        string itemPath = string.Empty;
+        string title = string.Empty;
 
         if (coveoResponse.results != null && coveoResponse.results.Count > 0)
         {
           var first = coveoResponse.results[0];
-          Console.WriteLine("  First result title: " + first.title);
-          Console.WriteLine("  First result title: " + first.uri);
-          Console.WriteLine("  First result title: " + first.printableUri);
-          //if (first.raw != null && first.raw.Count > 0)
-          //{
-          //    Console.WriteLine("  Raw fields:");
-          //    foreach (var kvp in first.raw)
-          //    {
-          //        Console.WriteLine(string.Format("    {0} = {1}", kvp.Key, kvp.Value));
-          //    }
-          //}
+          title  = first.title ?? string.Empty;
+          itemId = ExtractItemId(first.uri);
         }
 
-        return new VerifyResult { Label = label, Exists = true, Count = coveoResponse.totalCount };
+        return new VerifyResult { SriggLeId = sriggLeId, Title = title, Label = label, Exists = true, Count = coveoResponse.totalCount, ItemId = itemId, ItemPath = itemPath };
       }
       else
       {
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(string.Format("[{0}] Data NOT found — 0 results returned.", label));
         Console.ResetColor();
-        return new VerifyResult { Label = label, Exists = false, Count = 0 };
+        return new VerifyResult { SriggLeId = sriggLeId, Title = string.Empty, Label = label, Exists = false, Count = 0, ItemId = string.Empty, ItemPath = string.Empty };
       }
     }
+
+    // Extract bare GUID from e.g. sitecore://database/web/ItemId/67C2B893-.../Language/en/Version/1
+    private static string ExtractItemId(string uri)
+    {
+      if (string.IsNullOrEmpty(uri)) return string.Empty;
+      var match = Regex.Match(uri,
+          @"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}",
+          RegexOptions.IgnoreCase);
+      return match.Success ? match.Value.ToUpperInvariant() : uri;
+    }
+
+
   }
 }
