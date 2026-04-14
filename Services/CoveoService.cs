@@ -20,6 +20,16 @@ namespace CoveoVerifierTool.Services
     public int Count { get; set; }
     public string ItemId { get; set; }
     public string ItemPath { get; set; }
+    public List<string> MissingHotelKeys { get; set; }
+    public List<string> MissingExcursionKeys { get; set; }
+    public GaHotelInfo HotelInfo { get; set; }
+    public GaExcursionInfo ExcursionInfo { get; set; }
+
+    public VerifyResult()
+    {
+      MissingHotelKeys = new List<string>();
+      MissingExcursionKeys = new List<string>();
+    }
   }
 
   public class CoveoService
@@ -71,7 +81,7 @@ namespace CoveoVerifierTool.Services
         aq = string.Format(
               "((@flanguage50416=={0}) AND (@ffullpath50416 *= /sitecore/content/YasConnect/GlobalContent/SharedContent/Platform/*) AND ((@ftemplateid50416==d801ccec-bb25-4621-a1db-ea4eaf32120e AND @fsriggleid50416=\"{1}\")))",
               language, sriggLeId),
-        fieldsToInclude = new List<string> { "fhotelinfo50416" },
+        fieldsToInclude = new List<string> { "fhotelinfo50416", "fgahotelinfo50416" },
         fieldsToExclude = new List<string>(CommonExclusions),
         numberOfResults = 999
       };
@@ -84,7 +94,7 @@ namespace CoveoVerifierTool.Services
         aq = string.Format(
               "((@flanguage50416=={0}) AND (@ffullpath50416 *= /sitecore/content/YasConnect/GlobalContent/SharedContent/Platform/*) AND ((@ftemplateid50416==44002bda-145b-49a9-a8f4-36b568362c76 AND @fsriggleid50416=\"{1}\")))",
               language, sriggLeId),
-        fieldsToInclude = new List<string> { "fez120xcursioninfo50416" },
+        fieldsToInclude = new List<string> { "fexcursioninfo50416", "fgaez120xcursioninfo50416" },
         fieldsToExclude = new List<string>(CommonExclusions),
         numberOfResults = 999
       };
@@ -133,15 +143,54 @@ namespace CoveoVerifierTool.Services
         string itemId = string.Empty;
         string itemPath = string.Empty;
         string title = string.Empty;
+        GaHotelInfo hotelInfo = null;
+        GaExcursionInfo excursionInfo = null;
+        List<string> missingHotelKeys = new List<string>();
+        List<string> missingExcursionKeys = new List<string>();
 
         if (coveoResponse.results != null && coveoResponse.results.Count > 0)
         {
           var first = coveoResponse.results[0];
           title  = first.title ?? string.Empty;
           itemId = ExtractItemId(first.uri);
+
+          if (label == "HOTEL")
+          {
+            object rawField;
+            if (first.raw.TryGetValue("fgahotelinfo50416", out rawField) && rawField != null)
+            {
+              var parsed = GaHotelInfo.DeserializeGaHotelInfo(rawField.ToString());
+              hotelInfo = parsed.Item1;
+              missingHotelKeys = GaHotelInfo.GetMissingKeys(parsed.Item2);
+            }
+            else
+            {
+              missingHotelKeys = new List<string>(GaHotelInfo.ExpectedKeys);
+            }
+          }
+          else if (label == "EXCURSION")
+          {
+            object rawField;
+            if (first.raw.TryGetValue("fgaez120xcursioninfo50416", out rawField) && rawField != null)
+            {
+              var parsed = GaExcursionInfo.DeserializeGaExcursionInfo(rawField.ToString());
+              excursionInfo = parsed.Item1;
+              missingExcursionKeys = GaExcursionInfo.GetMissingKeys(parsed.Item2);
+            }
+            else
+            {
+              missingExcursionKeys = new List<string>(GaExcursionInfo.ExpectedKeys);
+            }
+          }
         }
 
-        return new VerifyResult { SriggLeId = sriggLeId, Title = title, Label = label, Exists = true, Count = coveoResponse.totalCount, ItemId = itemId, ItemPath = itemPath };
+        return new VerifyResult
+        {
+          SriggLeId = sriggLeId, Title = title, Label = label, Exists = true,
+          Count = coveoResponse.totalCount, ItemId = itemId, ItemPath = itemPath,
+          HotelInfo = hotelInfo, ExcursionInfo = excursionInfo,
+          MissingHotelKeys = missingHotelKeys, MissingExcursionKeys = missingExcursionKeys
+        };
       }
       else
       {
