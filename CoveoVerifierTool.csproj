@@ -42,6 +42,8 @@
   <ItemGroup>
     <Compile Include="Models\CoveoRequest.cs" />
     <Compile Include="Models\CoveoResponse.cs" />
+    <Compile Include="Models\GaHotelInfo.cs" />
+    <Compile Include="Models\GaExcursionInfo.cs" />
     <Compile Include="Services\CoveoService.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
